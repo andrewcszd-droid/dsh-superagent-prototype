@@ -77,5 +77,12 @@ export function storeReads(db: DatabaseSync) {
     ? values('SELECT value FROM thread WHERE subscribed = ? ORDER BY rowid', source)
     // Force the partial index so SQLite does not scan the entire table in rowid order.
     : values('SELECT value FROM thread INDEXED BY thread_subscribed WHERE subscribed IS NOT NULL ORDER BY rowid'),
+  /** Triggers that a Ticket's worker handed back for a new Eval, newest Trigger first, with each handback's facts. */
+  handbacks: (limit = 50): { trigger: Trigger; ticketId: string; reason: string; at: string }[] =>
+    db.prepare(`SELECT t.value AS trigger, json_extract(h.value, '$.ticketId') AS ticketId, json_extract(h.value, '$.reason') AS reason,
+      json_extract(h.value, '$.at') AS at FROM disposition d JOIN json_each(json_extract(d.value, '$.handbacks')) h
+      JOIN trigger t ON t.id = d.id ORDER BY t.at DESC LIMIT ?`).all(limit)
+      .map(row => ({ trigger: JSON.parse(String(row.trigger)) as Trigger, ticketId: String(row.ticketId),
+        reason: String(row.reason), at: String(row.at) })),
   }
 }

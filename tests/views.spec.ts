@@ -12,6 +12,7 @@ import { basisFacts, ticketDetail } from '../src/app/views/tickets.ts'
 import { threadDetail } from '../src/app/views/threads.ts'
 import { droppedReplies, sourcesStatus } from '../src/app/views/sources.ts'
 import { overview } from '../src/app/views/overview.ts'
+import { queueView } from '../src/app/views/queue.ts'
 import { markdown, plain } from '../src/app/views/text.ts'
 import { policyHistory } from '../src/app/settings-history.ts'
 import { KV } from '../src/kv.ts'
@@ -318,4 +319,43 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   const records = { tickets: { get: vi.fn() }, threads: { get: vi.fn() }, triggers: store.triggers }
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])
   expect([records.tickets.get, records.threads.get].map(read => read.mock.calls.length)).toEqual([0, 0])
+})
+
+it('gathers the dispatch queue from the same records as the other pages: queued, filtered, ignored, an unavailable Eval, undelivered Inputs, and a handback', () => {
+  const host = views()
+  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+    correlated: [], pending: ['e1'], meta: {} })
+  store.threads.save({ key: 'feishu:oc_2:om_root', ref: { source: 'feishu', id: 'oc_2:om_root' }, createdAt: at, subscriptions: [],
+    correlated: [], pending: [], meta: {} })
+  store.threads.save({ key: 'feishu:oc_3:om_root', ref: { source: 'feishu', id: 'oc_3:om_root' }, createdAt: at, subscriptions: [],
+    correlated: [], pending: [], meta: {} })
+  store.triggers.save(message('e1', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.save(message('e3', { source: 'feishu', id: 'ou_bob' }))
+  store.triggers.save(message('e6', { source: 'feishu', id: 'ou_alice' }))
+  const on = (id: string, chat: string) => store.triggers.save({ ...message(id, { source: 'feishu', id: 'ou_alice' }),
+    threads: [{ source: 'feishu', id: `${chat}:om_root` }] })
+  on('e5', 'oc_2')
+  on('e4', 'oc_3')
+  store.triggers.saveDisposition('e3', { filtered: { code: 'not_a_member' }, fanout: [], at })
+  store.triggers.saveDisposition('e6', { fanout: ['t1'], handbacks: [{ ticketId: 't1', reason: 'Asks for a new feature', at }], at })
+  store.decisions.save({ id: 'd2', evalId: 'v2', threadKey: 'feishu:oc_2:om_root', triggerIds: ['e5'], policyVersion: 'v', at,
+    kind: 'unavailable', reason: [{ code: 'timeout' }], strength: 'explicit' })
+  store.decisions.save({ id: 'd1', evalId: 'v1', threadKey: 'feishu:oc_3:om_root', triggerIds: ['e4'], policyVersion: 'v', at,
+    kind: 'ignore', reason: [{ code: 'not_explicit' }], strength: 'explicit' })
+  store.tickets.save({ id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: ['i1'], createdAt: at, updatedAt: at,
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+    origin: { triggerId: 'e1', triggerIds: ['e1'] }, assignments: [], inputs: [] })
+  const view = queueView(host, 'pv1')
+  expect(view.queued.map(row => row.id)).toEqual(['e1'])
+  expect(view.filtered.map(row => row.id)).toEqual(['e3'])
+  expect(view.ignore.map(row => row.id)).toEqual(['e4'])
+  expect(view.unavailable.map(row => row.id)).toEqual(['e5'])
+  expect(view.undelivered.map(ticket => [ticket.id, ticket.undelivered])).toEqual([['t1', 1]])
+  expect(view.raised.person).toEqual([])
+  expect(view.raised.handbacks.map(row => [row.id, row.handback])).toEqual([['e6',
+    { ticketId: 't1', title: 'Fix', reason: 'Asks for a new feature', at }]])
+  // The reason each kind holds its Trigger rides on the row, so the page needs no second read.
+  expect(view.ignore[0]!.disposition.decision).toMatchObject({ outcome: 'ignore', reason: [{ code: 'not_explicit' }] })
+  expect(view.unavailable[0]!.disposition.decision).toMatchObject({ outcome: 'unavailable' })
+  expect(view.filtered[0]!.disposition.filtered).toEqual({ code: 'not_a_member' })
 })

@@ -121,6 +121,8 @@ export function ticketSummary(ticket: Ticket) {
   const state = liveTicket(ticket) ? 'open' as const : 'ended' as const
   return { id: ticket.id, title: ticket.title, state, ...stage, ...note ? { note } : {},
     actions: { retry: canRetry(ticket), stop: liveTicket(ticket) }, strength: ticket.mandate.strength, ended: ticket.ended,
+    // From intake to its end, so an Ended Ticket shows how long its work took; absent while the Ticket is open.
+    durationMs: ticket.ended ? Math.max(0, Date.parse(ticket.ended.at) - Date.parse(ticket.createdAt)) : undefined,
     attention: ticket.attention && { ...ticket.attention, question: markdown(ticket.attention.question) },
       assignments: ticket.assignments.length, inputs: ticket.inputs.length, undelivered: ticket.undelivered.length,
     // Every started Assignment of a Ticket runs in its one shared worker Session.

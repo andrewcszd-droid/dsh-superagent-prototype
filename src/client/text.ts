@@ -61,3 +61,12 @@ export function fullTime(value: string | undefined, lang: string): string {
   const date = new Date(value ?? '')
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(timeLocale(lang))
 }
+/** Words a duration coarsely in the interface language: days, hours, minutes, or seconds. */
+export function duration(value: number | undefined, lang: string): string {
+  if (value === undefined || Number.isNaN(value)) return ''
+  const seconds = Math.round(value / 1000)
+  const units: [number, string, string][] = [[86_400, '天', 'd'], [3_600, '小时', 'h'], [60, '分钟', 'm'], [1, '秒', 's']]
+  const unit = units.find(([size]) => seconds >= size) ?? units[units.length - 1]!
+  const amount = Math.max(1, Math.floor(seconds / unit[0]))
+  return lang === 'zh' ? `${amount} ${unit[1]}` : `${amount}${unit[2]}`
+}

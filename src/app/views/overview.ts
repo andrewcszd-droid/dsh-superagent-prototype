@@ -10,7 +10,7 @@ import { ticketRow, type ExecutorLoad } from './tickets.ts'
 import { preview } from './text.ts'
 
 /** Threads whose latest decision since `since` is an undismissed `unavailable` eval and that are neither evaluating nor queued. */
-function unjudged(store: Store, since: string): { thread: Thread; decision: Decision }[] {
+export function unjudged(store: Store, since: string): { thread: Thread; decision: Decision }[] {
   const seen = new Set<string>()
   const queue = { store, owners: ownersOf(store) }
   return store.read.decisionsOfKinds(['unavailable'], 200).filter(decision => decision.at >= since).flatMap(decision => {
@@ -71,6 +71,8 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
   return {
     problems,
     person: open.filter(ticket => ticketStage(ticket).stage === 'person').map(ticket => ticketRow(view, ticket)),
+    // Every open Ticket, so the overview answers "who is working on what" without switching pages; `person` above is its subset that waits for one.
+    active: open.map(ticket => ticketRow(view, ticket)),
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },
     flow: { received, filtered, triggers: received - filtered, judged: judgement.judged, accepted: judgement.accepted,
       evaluating: evaluating.length, dropped: store.read.droppedSince(since) },

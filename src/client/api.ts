@@ -101,6 +101,8 @@ export const DECISION_FILTERS = ['work', 'stop', 'ignore', 'unavailable', 'all']
 export type DecisionFilter = typeof DECISION_FILTERS[number]
 export const DECISION_KINDS: Readonly<Record<DecisionFilter, string>> = { work: 'accept,reopen', stop: 'stop', ignore: 'ignore',
   unavailable: 'unavailable', all: '' }
+export const QUEUE_FILTERS = ['queued', 'evaluating', 'filtered', 'ignore', 'unavailable', 'undelivered'] as const
+export type QueueFilter = typeof QUEUE_FILTERS[number]
 
 export type Call = <K extends keyof Api>(route: K, ...request: {} extends ApiRequest<K> ? [request?: ApiRequest<K>] : [request: ApiRequest<K>])
   => Promise<ApiResponse<K>>
@@ -118,6 +120,9 @@ export function caller(messages: () => ApiMessages): Call {
 
 export type StateView = ApiResponse<'GET state'>
 export type SetupView = StateView['setup']
+export type QueueView = ApiResponse<'GET queue'>
+export type QueueTriggerRow = QueueView['ignore'][number]
+export type QueueTicketRow = QueueView['undelivered'][number]
 export type SettingsView = ApiResponse<'GET settings'>
 export type Settings = { [B in keyof SettingsView['blocks']]: SettingsView['blocks'][B]['value'] }
 export type SourceView = SettingsView['sources'][number]

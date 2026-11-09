@@ -1,12 +1,31 @@
 /** Overview page: pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
 import type { ReactNode } from 'react'
-import { usePoll, type Problem } from './api.ts'
+import { usePoll, type Problem, type TicketRow } from './api.ts'
 import { Button, Icon } from './controls.tsx'
+import { ticketMark } from './marks.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
-import { TicketLine } from './rows.tsx'
+import { ThreadChip, TicketLine } from './rows.tsx'
 import { healthText, localized, reasonLabel, valueLabel, readableMarkers } from './text.ts'
-import { CheckSetupButton, ConfirmButton, Hint, LoadState, Section, SetupMessage } from './widgets.tsx'
+import { CheckSetupButton, ConfirmButton, Hint, LoadState, Section, SetupMessage, StageMark, When } from './widgets.tsx'
+
+/** One open Ticket with its stage, latest progress, and Threads; links into its Ticket page. */
+function ActiveLine({ ticket }: { ticket: TicketRow }) {
+  const { t, navigate } = usePanel()
+  const status = ticketMark(t, ticket)
+  return <li className="dt-row dt-link dt-ticket">
+    <div className="dt-ticket-stage"><StageMark state={status.dot} icon={status.icon} label={status.label} /></div>
+    <div className="dt-ticket-body">
+      <div className="dt-row-title"><button type="button" className="dt-open"
+        onClick={() => navigate({ page: 'execution', id: ticket.id })}>{ticket.title}</button></div>
+      {ticket.summary && <p className="dt-hint dt-clamp">{ticket.summary.split('\n')[0]}</p>}
+      <div className="dt-row-meta dt-ticket-meta">
+        {ticket.threads.map(thread => <ThreadChip key={thread.key} thread={thread} />)}
+        <When at={ticket.updatedAt} />
+      </div>
+    </div>
+  </li>
+}
 
 function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () => Promise<void> }) {
   const { t, call, navigate } = usePanel()
@@ -77,6 +96,11 @@ export function OverviewPage() {
         onChanged={reload} />)}</ul>
         : <Hint>{t('needsYouNone')}</Hint>}
     </Section>
+    {/* Every open Ticket with its stage and latest progress; absent when an older host answers without it. */}
+    {Array.isArray(data.active) && <Section title={t('activeTickets')} hint={t('activeTicketsHint')} count={data.active.length}>
+      {data.active.length ? <ul className="dt-list dt-cards">{data.active.map(ticket => <ActiveLine key={ticket.id} ticket={ticket} />)}</ul>
+        : <Hint>{t('activeNone')}</Hint>}
+    </Section>}
     {data.problems.length > 0 && <Section title={t('problems')} count={data.problems.length}>
       <ul className="dt-list dt-cards">{data.problems.map((problem, index) => <ProblemLine key={index} problem={problem}
         onChanged={reload} />)}</ul>
