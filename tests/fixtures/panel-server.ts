@@ -8,7 +8,8 @@ import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-
 import type { Api, ApiResponse, RouteParams } from '../../src/app/api.ts'
 import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, builtInParts, composePrompt, composeSkill, defaultPrompts,
   environmentSection, policySection, promptParts } from '../../src/app/prompts.ts'
-import type { DroppedReply, HistoryView, Problem, PromptsView, SetupView, SourceStatusRow, SourceView, StateView, ThreadPageView,
+import type { DroppedReply, HistoryView, Problem, PromptsView, QueueTriggerRow, SetupView, SourceStatusRow, SourceView, StateView,
+  ThreadPageView,
   ThreadRow, TicketPageView,
   TicketRow, TicketStage,
   TriggerRow } from '../../src/client/api.ts'
@@ -49,7 +50,9 @@ export const threadSummary = (fields: Partial<ThreadRow> = {}): ThreadRow => ({
   createdAt: '2026-09-22T00:00:00Z', subscriptions: 1, tickets: [{ id: 't1', title: '修复回归', state: 'open' }], evaluating: undefined,
   pending: 0, pollError: undefined, url: undefined, facts: { chat: { value: '团队群' } }, ...fields,
 })
-type TriggerFields = Partial<Omit<TriggerRow, 'disposition' | 'actions'>> & { disposition?: Partial<TriggerRow['disposition']> }
+type TriggerFields = Partial<Omit<TriggerRow, 'disposition' | 'actions'>> & { disposition?: Partial<TriggerRow['disposition']>;
+  /** The Thread summary a queue row carries; a thread timeline row answers without one. */
+  thread?: QueueTriggerRow['thread'] }
 /** Build a trigger row on the default thread and compute `actions.requeue` using the host's eligibility rules. */
 export function trigger(id: string, at: string, { disposition, ...fields }: TriggerFields = {}): TriggerRow {
   const row = { id, source: 'feishu', actor: actor('feishu', MEMBER), human: true, at, text: `message ${id}`, preview: `message ${id}`,
@@ -94,6 +97,8 @@ export interface PanelServer {
   threadPages: (key: string, query: { before?: string; around?: string }) => ThreadPageView | undefined
   person: TicketRow[]; search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
   queue: ApiResponse<'GET queue'>
+  /** Fields a test overrides on the overview answer, such as an older host omitting `week`; the rest stays dynamic. */
+  overview?: Partial<ApiResponse<'GET overview'>>
   requests: { path: string; method: string; body?: unknown }[]
   /** Requests with undeclared query params or invalid body presence; asserted empty after each test. */
   misuse: string[]
@@ -197,10 +202,12 @@ const overviewView = (): ApiResponse<'GET overview'> => {
       ...Object.values(server.settings.policy.sources).some(part => part.allowed.length) ? [] : [{ kind: 'no-allowed' as const }],
       ...server.failing.map(outgoing => ({ kind: 'outgoing' as const, outgoing }))],
     person: server.person, executor: { running: 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers, idle: 1 },
-    // As on the host, every open Ticket: the person ones are the subset that waits for one.
-    active: [...new Map([...server.tickets.open, ...server.person].map(ticket => [ticket.id, ticket])).values()],
+    // As on the host, every open Ticket: the person ones are the subset that waits for one; t5 works unattended.
+    active: [...new Map([...server.tickets.open, ...server.person].map(ticket => [ticket.id, ticket])).values(),
+      ticketSummary({ id: 't5', title: '优化任务', summary: 'reworking the labels' })],
     flow: { received: 12, filtered: 2, triggers: 10, judged: 5, accepted: 1, evaluating: 0,
       dropped: server.dropped.filter(item => item.dropped.at >= dayAgo()).length },
+    week: { received: 34, filtered: 4, judged: 11, accepted: 3, completed: 2, avgDurationMs: 480000 },
     policyVersion: 'abcdef1234567890',
   }
 }
@@ -301,7 +308,7 @@ const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET state': { answer: stateView },
-  'GET overview': { answer: overviewView },
+  'GET overview': { answer: () => ({ ...overviewView(), ...server.overview }) },
   'GET queue': { answer: () => server.queue },
   'GET search': { query: ['q'], answer: async ({ query }) => {
     const q = query.q ?? ''

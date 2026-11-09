@@ -6,7 +6,7 @@ import { ticketMark } from './marks.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { ThreadChip, TicketLine } from './rows.tsx'
-import { healthText, localized, reasonLabel, valueLabel, readableMarkers } from './text.ts'
+import { healthText, localized, reasonLabel, valueLabel, readableMarkers, duration } from './text.ts'
 import { CheckSetupButton, ConfirmButton, Hint, LoadState, Section, SetupMessage, StageMark, When } from './widgets.tsx'
 
 /** One open Ticket with its stage, latest progress, and Threads; links into its Ticket page. */
@@ -82,6 +82,9 @@ export function OverviewPage() {
   const { setup } = usePanelData()
   const { data, error, reload } = usePoll(() => call('GET overview'), [])
   if (!data) return <LoadState error={error} loading />
+  // Tickets waiting for a person sit in the section above, so they do not take a second row here; an older host answers
+  // without `active` and hides the section entirely.
+  const rest = Array.isArray(data.active) ? data.active.filter(ticket => ticket.stage !== 'person') : []
   const stat = (label: string, value: ReactNode, route?: Route) => <span className="dt-stat">
     <span className="dt-stat-label">{label}</span>
     {route ? <button type="button" className="dt-textlink dt-stat-value" onClick={() => navigate(route)}>{value}</button> : <span
@@ -96,9 +99,9 @@ export function OverviewPage() {
         onChanged={reload} />)}</ul>
         : <Hint>{t('needsYouNone')}</Hint>}
     </Section>
-    {/* Every open Ticket with its stage and latest progress; absent when an older host answers without it. */}
-    {Array.isArray(data.active) && <Section title={t('activeTickets')} hint={t('activeTicketsHint')} count={data.active.length}>
-      {data.active.length ? <ul className="dt-list dt-cards">{data.active.map(ticket => <ActiveLine key={ticket.id} ticket={ticket} />)}</ul>
+    {/* Every open Ticket beyond the pending ones, with its stage and latest progress; absent when an older host answers without it. */}
+    {Array.isArray(data.active) && <Section title={t('activeTickets')} hint={t('activeTicketsHint')} count={rest.length}>
+      {rest.length ? <ul className="dt-list dt-cards">{rest.map(ticket => <ActiveLine key={ticket.id} ticket={ticket} />)}</ul>
         : <Hint>{t('activeNone')}</Hint>}
     </Section>}
     {data.problems.length > 0 && <Section title={t('problems')} count={data.problems.length}>
@@ -115,6 +118,16 @@ export function OverviewPage() {
         {data.flow.dropped > 0 && stat(t('flowDroppedLabel'), data.flow.dropped, { page: 'source' })}
       </div>
     </Section>
+    {/* The same definitions over a seven-day window; the whole row stays hidden when an older host answers without it. */}
+    {data.week && typeof data.week.received === 'number' && <Section title={t('last7Days')}
+      action={more({ page: 'execution', query: { filter: 'ended' } })}>
+      <div className="dt-stats">
+        {stat(t('flowReceivedLabel'), data.week.received)}
+        {stat(t('flowAcceptedLabel'), data.week.accepted)}
+        {stat(t('weekCompletedLabel'), data.week.completed)}
+        {data.week.avgDurationMs !== undefined && stat(t('weekAvgDurationLabel'), duration(data.week.avgDurationMs, t('lang')))}
+      </div>
+    </Section>}
     <Section title={t('term.executor')} action={more({ page: 'execution' })}>
       {/* Pauses surface in `problems` above, so Executor counts render the same in both states; while setup waits, nothing runs. */}
       {setup?.problem ? <Hint>{t('executorWaitingSetup')}</Hint> : <div className="dt-stats">

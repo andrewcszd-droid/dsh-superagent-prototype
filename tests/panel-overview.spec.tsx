@@ -10,15 +10,17 @@ it('leads the overview with the pending Tickets, then problems, the last day and
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '来源', '触发', '评估', '待下发', '执行', '设置'])
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '在办工作2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
-  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败', '待回答', '待处理失败'])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '在办工作1', '系统问题2', '过去 24 小时详情 ›',
+    '近 7 天详情 ›', '执行器详情 ›'])
+  expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败', '执行中'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
   expect(text()).toContain('来源会在每次轮询时自动重试')
   expect(text()).toContain('需要确认按钮颜色')
-  expect(all('.dt-stat').map(stat => stat.textContent)).toEqual(['到达12', '被过滤2', '已评估5', '接单或续做1', '执行中2 / 3', '排队0', '等待新触发1'])
+  expect(all('.dt-stat').map(stat => stat.textContent)).toEqual(['到达12', '被过滤2', '已评估5', '接单或续做1', '到达34', '接单或续做3',
+    '完成2', '平均耗时8 分钟', '执行中2 / 3', '排队0', '等待新触发1'])
   expect(all('.dt-chip').map(chip => chip.textContent)[0]).toBe('GitHub#42CI 失败1')
   expect(document.querySelector('.dt-chip-problem')?.textContent).toBe('CI 失败1')
   expect(document.querySelector<HTMLAnchorElement>('a.dt-chip-link')?.href).toBe('https://github.com/acme/widgets/pull/42')
@@ -125,12 +127,30 @@ it('words a refused retry in the interface language by its code', async () => {
 
 it('shows the overview in English', async () => {
   await mount(en)
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.activeTickets}2`,
-    `${en.problems}2`, `${en.lastDay}${en.details}`, `${en['term.executor']}${en.details}`])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.activeTickets}1`,
+    `${en.problems}2`, `${en.lastDay}${en.details}`, `${en.last7Days}${en.details}`, `${en['term.executor']}${en.details}`])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent))
-    .toEqual([en['stage.answer'], en['stage.failed'], en['stage.answer'], en['stage.failed']])
+    .toEqual([en['stage.answer'], en['stage.failed'], en['stage.working']])
   expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel,
-    en.flowAcceptedLabel, en.executingLabel, en.queuedLabel, en.idleLabel])
+    en.flowAcceptedLabel, en.flowReceivedLabel, en.flowAcceptedLabel, en.weekCompletedLabel, en.weekAvgDurationLabel,
+    en.executingLabel, en.queuedLabel, en.idleLabel])
+})
+
+it('keeps a pending Ticket out of Active work, and hides the seven-day row when an older host answers without it', async () => {
+  await mount()
+  const active = all('.dt-section').find(section => section.textContent?.startsWith(zh.activeTickets))!
+  // The person Tickets are the pending section's rows, so Active work holds only the working t5.
+  expect(active.textContent).not.toContain('需要确认按钮颜色')
+  expect(active.textContent).toContain('优化任务')
+  server.overview = { week: undefined }
+  await remount()
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '在办工作1', '系统问题2', '过去 24 小时详情 ›',
+    '执行器详情 ›'])
+  server.overview = { active: undefined }
+  await remount()
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›',
+    '近 7 天详情 ›', '执行器详情 ›'])
+  server.overview = undefined
 })
 
 it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {

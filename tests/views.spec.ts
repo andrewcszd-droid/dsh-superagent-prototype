@@ -354,8 +354,33 @@ it('gathers the dispatch queue from the same records as the other pages: queued,
   expect(view.raised.person).toEqual([])
   expect(view.raised.handbacks.map(row => [row.id, row.handback])).toEqual([['e6',
     { ticketId: 't1', title: 'Fix', reason: 'Asks for a new feature', at }]])
+  // Every row carries its Thread's readable summary, so the panel titles rows without the raw key; a Trigger whose Thread
+  // is gone answers without one.
+  expect(view.queued[0]).toMatchObject({ thread: { key: 'feishu:oc_1:om_root', title: expect.stringContaining('message') } })
+  expect(view.filtered[0]!.thread).toMatchObject({ key: 'feishu:oc_1:om_root' })
+  expect(view.unavailable[0]!.thread).toMatchObject({ key: 'feishu:oc_2:om_root' })
+  expect(view.ignore[0]!.thread).toMatchObject({ key: 'feishu:oc_3:om_root' })
+  expect(view.raised.handbacks[0]!.thread).toMatchObject({ key: 'feishu:oc_1:om_root' })
   // The reason each kind holds its Trigger rides on the row, so the page needs no second read.
   expect(view.ignore[0]!.disposition.decision).toMatchObject({ outcome: 'ignore', reason: [{ code: 'not_explicit' }] })
   expect(view.unavailable[0]!.disposition.decision).toMatchObject({ outcome: 'unavailable' })
   expect(view.filtered[0]!.disposition.filtered).toEqual({ code: 'not_a_member' })
+})
+
+it('recomputes the seven-day flow and the ended average from the same records as the day window', () => {
+  const host = views()
+  const ended = (id: string, hours: number) => store.tickets.save({ id, title: id, decisionId: 'd', channels: [], undelivered: [],
+    createdAt: new Date(Date.now() - (hours + 1) * 3_600_000).toISOString(), updatedAt: at,
+    ended: { at: new Date(Date.now() - hours * 3_600_000).toISOString(), by: 'executor', reason: 'done', outcome: 'completed' },
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
+    origin: { triggerId: 'e0', triggerIds: ['e0'] }, assignments: [], inputs: [] })
+  ended('t2', 24)     // inside the week, outside the day window
+  ended('t3', 24 * 8) // outside the week
+  store.triggers.save(message('e1', { source: 'feishu', id: 'ou_alice' }))
+  const view = overview(host, {}, 'v1', load)
+  expect(view.week.completed).toBe(1)
+  // The average rides on the same definition as the ended list: ended.at minus createdAt.
+  expect(view.week.avgDurationMs).toBe(3_600_000)
+  expect(view.week.received).toBeGreaterThanOrEqual(view.flow.received)
+  expect(view.week.accepted).toBeGreaterThanOrEqual(view.flow.accepted)
 })

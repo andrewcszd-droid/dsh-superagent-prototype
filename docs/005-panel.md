@@ -16,11 +16,11 @@ The tabs follow the workflow: **Overview**, **Source**, **Trigger**, **Eval**, *
 
 | Tab | Shows |
 | --- | --- |
-| Overview | Tickets needing action, every open Ticket with its stage and latest progress, system problems, activity counts for the last 24 hours, and Executor load. Each block links to its detailed page |
+| Overview | Tickets needing action, every other open Ticket with its stage and latest progress (a Ticket waiting for a person appears only once), system problems, activity counts for the last 24 hours and the last 7 days, and Executor load. Each block links to its detailed page |
 | Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
 | Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
 | Eval | Decisions with their reason and matched rules |
-| Pending | Triggers not yet dispatched, grouped by what holds each: queued for an Eval, evaluating, filtered by its Source, ignored, an unavailable Eval, or undelivered Ticket Inputs — with Evaluate again and Dismiss where the records allow them — and below, what workers raised: Tickets waiting for a person and Triggers a worker handed back |
+| Pending | Triggers not yet dispatched, grouped by what holds each: queued for an Eval, evaluating, filtered by its Source, ignored, an unavailable Eval, or undelivered Ticket Inputs — each row titled by its Thread's name and linked to the original conversation, with Evaluate again and Dismiss where the records allow them — and below, what workers raised: Tickets waiting for a person and Triggers a worker handed back, the latter marked as handed back rather than by the Thread's earlier Decision |
 | Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended, with how long an Ended Ticket took. Ticket details show actions, authorization, waiting Inputs, Subscriptions and Assignments |
 | Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
 

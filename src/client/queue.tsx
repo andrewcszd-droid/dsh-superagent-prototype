@@ -3,7 +3,7 @@ import { QUEUE_FILTERS, usePoll, type QueueFilter, type QueueView } from './api.
 import { Pill, Tag } from './controls.tsx'
 import { decisionMark } from './marks.ts'
 import { usePanel } from './provider.tsx'
-import { TicketLine } from './rows.tsx'
+import { ThreadChip, TicketLine } from './rows.tsx'
 import { actorName, readableMarkers, reasonLabel } from './text.ts'
 import { ClampText, ConfirmButton, Hint, LabelValue, LoadState, Section, StatusHead, When } from './widgets.tsx'
 
@@ -11,7 +11,7 @@ type TriggerRowOf = QueueView['ignore'][number]
 type TicketRowOf = QueueView['undelivered'][number]
 type Handback = QueueView['raised']['handbacks'][number]['handback']
 /** One waiting Trigger of the queue, however the host view carried it in. */
-type QueueRow = Pick<TriggerRowOf, 'id' | 'at' | 'actor' | 'text' | 'preview' | 'threads' | 'disposition' | 'actions'>
+type QueueRow = Pick<TriggerRowOf, 'id' | 'at' | 'actor' | 'text' | 'preview' | 'threads' | 'disposition' | 'actions' | 'thread'>
   & { handback?: Handback }
 /** The kind's trigger rows, or undefined when the host answers without it (an older bundle): that filter reads as partial data. */
 const triggersOf = (view: QueueView, kind: QueueFilter): QueueRow[] | undefined => {
@@ -34,18 +34,21 @@ function QueueTrigger({ row, kind, onChanged }: {
   const held = kind === 'queued' || kind === 'evaluating'
   const decision = row.disposition.decision
   const thread = row.threads[0]
+  const summary = row.thread
   const ticketId = decision?.ticketId
   const dismissId = kind === 'unavailable' ? decision?.id : undefined
   const reason = row.disposition.filtered ? reasonLabel(t, row.disposition.filtered)
     : decision && (decision.outcome === 'unavailable' || decision.outcome === 'ignore') ? reasonLabel(t, decision.reason) : undefined
-  const { tone, label } = decision ? decisionMark(t, decision.outcome)
-    : { tone: 'neutral' as const, label: t(`queueFilter.${kind}`) }
+  // A handback waits for a fresh Eval, so its mark names that state rather than the Thread's earlier Decision outcome.
+  const { tone, label } = row.handback ? { tone: 'warning' as const, label: t('queueHandbackTag') }
+    : decision ? decisionMark(t, decision.outcome) : { tone: 'neutral' as const, label: t(`queueFilter.${kind}`) }
   return <li className="dt-row dt-link">
     <div className="dt-row-main">
       <div className="dt-row-meta dt-ticket-meta">
         <button type="button" className="dt-open dt-open-wrap" onClick={() => navigate(thread
-          ? { page: 'trigger', id: thread, query: { trigger: row.id } } : { page: 'queue', query: { filter: kind } })}>
-          {thread ?? row.id}</button>
+          ? { page: 'trigger', id: thread, query: { trigger: row.id } } : { page: 'queue', query: { filter: kind } })}
+          title={summary?.title}>{summary?.title ?? thread ?? row.id}</button>
+        {summary && <ThreadChip thread={summary} />}
         <strong>{actorName(t, row.actor)}</strong>
         <When at={row.at} />
         <Tag tone={tone}>{label}</Tag>

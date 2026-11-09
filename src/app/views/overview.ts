@@ -68,6 +68,18 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
   const stats = Object.values(store.read.triggerStats(since))
   const received = stats.reduce((sum, item) => sum + item.received, 0), filtered = stats.reduce((sum, item) => sum + item.filtered, 0)
   const judgement = store.read.flow(since)
+  // Seven-day flow recomputed from the same helpers as the 24-hour one above, so the two rows share one set of definitions.
+  const weekSince = new Date(Date.now() - 7 * 86_400_000).toISOString()
+  const weekStats = Object.values(store.read.triggerStats(weekSince))
+  const weekReceived = weekStats.reduce((sum, item) => sum + item.received, 0)
+  const weekFiltered = weekStats.reduce((sum, item) => sum + item.filtered, 0)
+  const weekFlow = store.read.flow(weekSince)
+  // Averages the newest 2,000 ended Tickets, so a very long-lived instance cannot make this read unbounded; the window
+  // filter applies first, and the cap sits far above what seven days of this panel's traffic produces.
+  const weekEnded = store.tickets.list().filter(ticket => ticket.ended && ticket.ended.at >= weekSince)
+    .sort((a, b) => (b.ended?.at ?? '').localeCompare(a.ended?.at ?? '')).slice(0, 2000)
+  const weekDuration = weekEnded.length ? weekEnded.reduce((sum, ticket) =>
+    sum + Math.max(0, Date.parse(ticket.ended!.at) - Date.parse(ticket.createdAt)), 0) / weekEnded.length : undefined
   return {
     problems,
     person: open.filter(ticket => ticketStage(ticket).stage === 'person').map(ticket => ticketRow(view, ticket)),
@@ -76,6 +88,8 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },
     flow: { received, filtered, triggers: received - filtered, judged: judgement.judged, accepted: judgement.accepted,
       evaluating: evaluating.length, dropped: store.read.droppedSince(since) },
+    week: { received: weekReceived, filtered: weekFiltered, judged: weekFlow.judged, accepted: weekFlow.accepted,
+      completed: weekEnded.length, ...weekDuration !== undefined ? { avgDurationMs: Math.round(weekDuration) } : {} },
     policyVersion: policyVersionValue,
   }
 }

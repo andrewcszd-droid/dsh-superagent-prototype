@@ -21,6 +21,27 @@ it('opens on the queued Triggers, one row with its Thread, actor, and kind, and 
   expect(all('.dt-row-buttons').map(row => row.textContent)).toEqual([])
 })
 
+it('titles a row with its Thread summary and links the original thread, falling back to the raw key without one', async () => {
+  server.queue = { ...server.queue, queued: [trigger('e5', '2026-09-23T00:03:00Z', { disposition: { queued: true },
+    thread: threadSummary({ url: 'https://example.feishu.cn/msg/om_root' }) })] }
+  await mount()
+  await open()
+  // The readable title and the chip's deep link replace the raw key of the host's earlier answers.
+  expect(text()).not.toContain('feishu:oc_1:om_root')
+  expect(text()).toContain('这个文案好奇怪')
+  expect(document.querySelector('a.dt-chip-link')?.getAttribute('href')).toBe('https://example.feishu.cn/msg/om_root')
+})
+
+it('marks a handed-back row by its handback, not by the Thread\'s earlier Decision outcome', async () => {
+  server.queue = { ...server.queue, queued: [], raised: { person: [], handbacks: [{ ...trigger('e7', '2026-09-23T00:05:00Z',
+    { disposition: { decision: { id: 'd2', outcome: 'accept' as const, reason: [{ code: 'explicitRouted' }], ticketId: 't1' } } }),
+    handback: { ticketId: 't1', title: '修复回归', reason: 'Beyond the ticket', at: '2026-09-23T00:06:00Z' } }] } }
+  await mount()
+  await open()
+  expect(text()).toContain(zh.queueHandbackTag)
+  expect(text()).not.toContain(zh['decision.accept'])
+})
+
 it('shows an empty kind by its empty state', async () => {
   await mount()
   await open()
