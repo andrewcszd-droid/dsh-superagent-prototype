@@ -13,6 +13,9 @@ import { evalsHealth } from '../src/app/views/overview.ts'
 import { mandateInstructions } from '../src/executor/dsh.ts'
 import { masterPrompt } from '../src/app/context.ts'
 import { reference, testMachine } from './fixtures/deployment.ts'
+// The dsh-superagent profile exports GIT_CONFIG_GLOBAL for its own Sessions, so a test run from inside one inherits it.
+// Isolate this process so the restore assertions below see the clean state they describe, not the host's inherited value.
+delete process.env.GIT_CONFIG_GLOBAL
 import type { Machine } from '../src/deployment.ts'
 import { SCHEMA_VERSION, Store } from '../src/app/store.ts'
 import { TextCache } from '../src/app/cache.ts'

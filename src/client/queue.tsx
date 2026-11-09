@@ -11,7 +11,8 @@ type TriggerRowOf = QueueView['ignore'][number]
 type TicketRowOf = QueueView['undelivered'][number]
 type Handback = QueueView['raised']['handbacks'][number]['handback']
 /** One waiting Trigger of the queue, however the host view carried it in. */
-type QueueRow = Pick<TriggerRowOf, 'id' | 'at' | 'actor' | 'text' | 'preview' | 'threads' | 'disposition'> & { handback?: Handback }
+type QueueRow = Pick<TriggerRowOf, 'id' | 'at' | 'actor' | 'text' | 'preview' | 'threads' | 'disposition' | 'actions'>
+  & { handback?: Handback }
 /** The kind's trigger rows, or undefined when the host answers without it (an older bundle): that filter reads as partial data. */
 const triggersOf = (view: QueueView, kind: QueueFilter): QueueRow[] | undefined => {
   const value = kind === 'queued' ? view.queued : kind === 'filtered' ? view.filtered
@@ -54,7 +55,8 @@ function QueueTrigger({ row, kind, onChanged }: {
       <ClampText text={readableMarkers(t, row.text || row.preview)} />
       {reason && <Hint>{reason}</Hint>}
       {row.handback && <Hint>{t('handedBack', { ticket: row.handback.title, reason: row.handback.reason })}</Hint>}
-      {!held && <div className="dt-row-meta dt-row-buttons">
+      {/* A person's Trigger with no effective judgement, as the Thread page gates it; the kind not being held is not enough. */}
+      {!held && row.actions.requeue && <div className="dt-row-meta dt-row-buttons">
         <ConfirmButton variant="outline" icon="refresh" label={t('requeue')} title={t('requeue')} message={t('queueRequeueConfirm')}
           onConfirm={async () => { await call('POST triggers/:id/requeue', { id: row.id }) }} />
         {dismissId && <ConfirmButton variant="outline" icon="dismiss" label={t('dismiss')}

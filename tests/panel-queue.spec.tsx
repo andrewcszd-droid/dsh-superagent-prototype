@@ -67,6 +67,21 @@ it('lists undelivered Inputs as Tickets, and what workers raised below the filte
   expect(text()).toContain('需要确认按钮颜色')
 })
 
+it('offers Evaluate again only where the row itself allows it: not on a bot Trigger, and not on an ignored one', async () => {
+  server.queue = { ...server.queue, queued: [], filtered: [trigger('e8', '2026-09-23T00:07:00Z',
+    { human: false, disposition: { filtered: { code: 'not_a_member' } } })],
+    ignore: [{ ...trigger('e9', '2026-09-23T00:08:00Z', { disposition: { decision: { id: 'd5', outcome: 'ignore' as const,
+      reason: [{ code: 'not_explicit' }], ticketId: undefined } } }), thread: threadSummary() }] }
+  await mount()
+  await open()
+  await click(pill('filtered'))
+  expect(text()).toContain('message e8')
+  expect(all('.dt-row-buttons')).toEqual([])
+  await click(pill('ignore'))
+  expect(text()).toContain('message e9')
+  expect(all('.dt-row-buttons')).toEqual([])
+})
+
 it('reads a host that answers without a kind as partial data, and shows the Policy version', async () => {
   const { filtered, ...rest } = server.queue
   server.queue = { ...rest } as typeof server.queue
