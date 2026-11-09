@@ -47,7 +47,7 @@ function QueueTrigger({ row, kind, onChanged }: {
       <div className="dt-row-meta dt-ticket-meta">
         <button type="button" className="dt-open dt-open-wrap" onClick={() => navigate(thread
           ? { page: 'trigger', id: thread, query: { trigger: row.id } } : { page: 'queue', query: { filter: kind } })}
-          title={summary?.title}>{summary?.title ?? thread ?? row.id}</button>
+          title={summary?.title}>{summary?.title ?? actorName(t, row.actor)}</button>
         {summary && <ThreadChip thread={summary} />}
         <strong>{actorName(t, row.actor)}</strong>
         <When at={row.at} />

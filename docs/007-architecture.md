@@ -381,7 +381,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/client/api.ts` | Calls and polls of the management API, typed by `src/app/api.ts`, and the Decision filters of the Eval status |
 | `src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
 | `src/client/overview.tsx` | The overview |
-| `src/client/queue.tsx` | The Pending tab: the dispatch queue by what holds each Trigger, each row titled by its Thread and linked to the original conversation, and what workers raised |
+| `src/client/queue.tsx` | The Pending tab: the dispatch queue by what holds each Trigger, each row titled by its Thread, or its actor when the Thread is unknown, and linked to the original conversation, and what workers raised |
 | `src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
 | `src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
 | `src/client/settings.tsx` | The Settings tab: the group navigation and the group on screen |

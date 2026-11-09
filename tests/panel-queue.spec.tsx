@@ -16,12 +16,14 @@ it('opens on the queued Triggers, one row with its Thread, actor, and kind, and 
   expect(tab(zh['tab.queue']).getAttribute('aria-selected')).toBe('true')
   expect(pill('queued').getAttribute('aria-pressed')).toBe('true')
   expect(pill('queued').textContent).toBe(`${zh['queueFilter.queued']} 1`)
-  expect(text()).toContain('feishu:oc_1:om_root')
+  // Without a Thread summary the row titles itself by its actor, never with the raw key.
+  expect(text()).not.toContain('feishu:oc_1:om_root')
+  expect(text()).toContain('Alice')
   expect(text()).toContain('message e5')
   expect(all('.dt-row-buttons').map(row => row.textContent)).toEqual([])
 })
 
-it('titles a row with its Thread summary and links the original thread, falling back to the raw key without one', async () => {
+it('titles a row with its Thread summary and links the original thread, and falls back to the actor when the Thread is unknown', async () => {
   server.queue = { ...server.queue, queued: [trigger('e5', '2026-09-23T00:03:00Z', { disposition: { queued: true },
     thread: threadSummary({ url: 'https://example.feishu.cn/msg/om_root' }) })] }
   await mount()
