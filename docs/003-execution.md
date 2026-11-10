@@ -141,6 +141,8 @@ Once a person's message reached a blocked or failed Ticket, the Executor has the
 A retry ends the current Assignment and starts a new one in the same Executor Session, directory, branch and pull request.
 
 The Executor model applies only when a Session is created; an existing Session keeps its model.
+
+Executor settings also hold `models`, per-expert model tiers keyed by mounted team-skill name (the Prompts config's `skills` keys). When a worker Session loads a tiered expert's skill — `dsh-superagent-<key>` with a `models` entry for `<key>` — it runs that tier from its next model request on, and its system prompt names that model; the selection is recorded on the Session, so it survives a restart, and an expert without an entry keeps the Executor model. Tiers apply only to worker Sessions, not to the main Session or Subagents; the main Session's next start picks the change up like any Executor-model change.
 ### Restart
 
 Running Assignments end with "host restarted" and new ones start with a recovery note that tells the Executor to check its directory, git history and GitHub before repeating any outside action, oldest Ticket first.

@@ -13,7 +13,7 @@ import { AgentDelivery, messageId } from './delivery.ts'
 import type { Effects } from './effects.ts'
 import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
-import { initializeRoleModel } from './role-models.ts'
+import { initializeRoleModel, installExpertTier, teamSkillKey, type ExpertTier } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
@@ -265,7 +265,19 @@ export class Sessions {
     } else {
       // An Executor Session keeps the profile's work tools it has, which DSH requires to be known; its own tools are not masked.
       binding.disposers.push(...this.workOnly(agent, ticket!.id))
+      // Expert model tiers: loading a tiered expert's team skill switches this Session's model from its next request on.
+      const tier = installExpertTier(this.ctx, agent)
+      binding.disposers.push(tier.dispose, agent.ctx.tools.guard(execution => this.expertTier(execution, tier)))
     }
+  }
+  /** Observes one tool execution and arms the expert model tier when it loads a tiered team skill; a guard never denies. */
+  private expertTier(execution: { readonly name: string; readonly arguments: unknown } | undefined, tier: ExpertTier): undefined {
+    if (!execution || execution.name !== 'skill') return undefined
+    const key = teamSkillKey(execution.arguments)
+    const model = key === undefined ? undefined : this.host.store.settings().executor.models[key]
+    if (!model) return undefined
+    tier.apply(model).catch(error => { this.ctx.logger.warn('dsh-superagent could not apply the model tier of skill %s: %s', key, String(error)) })
+    return undefined
   }
   /**
    * Whether a Session runs the router preset: as DSH's preset registry last selected it, read through the session projection

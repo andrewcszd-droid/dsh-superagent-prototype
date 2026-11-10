@@ -4,7 +4,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import { agentEvents, installModelSelection, type Agent, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { initializeRoleModel } from '../src/app/role-models.ts'
+import { initializeRoleModel, installExpertTier, teamSkillKey } from '../src/app/role-models.ts'
 const contexts: Context[] = []
 afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())); vi.restoreAllMocks() })
 async function fixture() {
@@ -62,4 +62,58 @@ it('inherits the host when unset and fails unavailable routes before recording a
   resolve.mockRejectedValueOnce(new Error('unknown provider'))
   await expect(initializeRoleModel(ctx, agent, { provider: 'unknown', model: 'x' })).rejects.toThrow('unknown provider')
   expect(agent.session.snapshotEvents().some(event => event.type === 'model/selection')).toBe(false)
+})
+
+it('names the team-skill key of a skill-tool call and nothing else', () => {
+  expect(teamSkillKey({ name: 'dsh-superagent-luban-engineering' })).toBe('luban-engineering')
+  expect(teamSkillKey({ name: 'dsh-superagent-zhiliang-research' })).toBe('zhiliang-research')
+  expect(teamSkillKey({ name: 'bash' })).toBeUndefined()
+  expect(teamSkillKey({ name: 'other-prefix-expert' })).toBeUndefined()
+  expect(teamSkillKey(undefined)).toBeUndefined()
+  expect(teamSkillKey({ other: 'shape' })).toBeUndefined()
+})
+it('runs following requests and prompt variables on the expert tier and records one durable selection', async () => {
+  const { ctx, agent, request } = await fixture()
+  const tier = installExpertTier(ctx, agent)
+  await tier.apply({ provider: 'tier-provider', model: 'flagship', reasoningEffort: 'max' })
+  expect(await request()).toEqual({ provider: 'tier-provider', model: 'flagship', reasoningEffort: ReasoningEffortId('max') })
+  expect((await ctx.systemPrompt.assemble()).variables).toMatchObject({ provider: 'tier-provider', model: 'flagship' })
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(1)
+  // Re-applying the tier the Session already holds records nothing new.
+  await tier.apply({ provider: 'tier-provider', model: 'flagship', reasoningEffort: 'max' })
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(1)
+})
+it('replaces the tier on a later apply and stops applying on dispose', async () => {
+  const { ctx, agent, request } = await fixture()
+  const tier = installExpertTier(ctx, agent)
+  const flagship = await tier.apply({ provider: 'tier-provider', model: 'flagship' })
+  const light = await tier.apply({ provider: 'tier-provider', model: 'light', reasoningEffort: 'low' })
+  expect(await request()).toEqual(light)
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(2)
+  tier.dispose()
+  expect(tier.current()).toBeUndefined()
+  // The tier no longer applies: the request falls back to whatever route the runtime would pick on its own.
+  expect(await request()).toEqual({ provider: 'seed', model: 'seed' })
+  expect(flagship).toBeDefined()
+})
+it('takes the tier over from the seeded role model once the tier lands and the step reassembles', async () => {
+  const { ctx, agent, request, record } = await fixture()
+  const tier = installExpertTier(ctx, agent)
+  await initializeRoleModel(ctx, agent, { provider: 'worker', model: 'light' })
+  await ctx.systemPrompt.assemble()
+  expect(await request()).toEqual({ provider: 'worker', model: 'light' })
+  record({ provider: 'worker', model: 'light' })
+  await tier.apply({ provider: 'tier-provider', model: 'flagship' })
+  await ctx.systemPrompt.assemble()
+  expect(await request()).toEqual({ provider: 'tier-provider', model: 'flagship' })
+})
+it('keeps the current tier armed when a later tier fails to resolve', async () => {
+  const { ctx, agent, request, resolve } = await fixture()
+  const tier = installExpertTier(ctx, agent)
+  await tier.apply({ provider: 'tier-provider', model: 'flagship' })
+  resolve.mockRejectedValueOnce(new Error('unknown provider'))
+  await expect(tier.apply({ provider: 'unknown', model: 'x' })).rejects.toThrow('unknown provider')
+  expect(tier.current()).toEqual({ provider: 'tier-provider', model: 'flagship' })
+  expect(await request()).toEqual({ provider: 'tier-provider', model: 'flagship' })
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(1)
 })

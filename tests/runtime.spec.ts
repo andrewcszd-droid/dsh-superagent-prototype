@@ -48,7 +48,7 @@ let tools: Map<string, Map<string, RegisteredTool>>
 type Section = { name: string; text: (context: { signal?: AbortSignal }) => string; interpolate?: boolean }
 let sections: Map<string, Section>
 type Guard = (execution?: { name: string; arguments: unknown }) => string | undefined
-let guards: Map<string, Guard>
+let guards: Map<string, Guard[]>
 let restricts: Map<string, unknown[]>
 type HttpHandler = (req: unknown, res: unknown) => Promise<void>
 let http: HttpHandler
@@ -182,7 +182,7 @@ beforeEach(async () => {
           if (rule.allow.some(name => !inherited.includes(name))) throw new Error('Restriction names a non-inherited tool')
           restricts.set(sessionId, [...restricts.get(sessionId) ?? [], rule]); return () => {}
         }),
-        guard: vi.fn((check: Guard) => { guards.set(sessionId, check); return () => {} }) })
+        guard: vi.fn((check: Guard) => { guards.set(sessionId, [...guards.get(sessionId) ?? [], check]); return () => {} }) })
       agentCtx.reflect.provide('skills', { register: () => () => {} })
       agentCtx.reflect.provide('systemPrompt', { section: (spec: Section) => { sections.set(sessionId, spec); return () => {} } })
       const inbox = { nextTurn: [] as UserMessage[], nextStep: [] as UserMessage[],
@@ -677,7 +677,7 @@ it('retries only a failed, blocked or undelivered ticket with a new assignment, 
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'failed', summary: 'LlmError: offline' })
   expect(waitsForPerson(runtime.store.tickets.get(ticket.id)!)).toBe(true)
   // A person may continue a failed worker in its Session; only an ended Ticket locks its tools.
-  expect(guards.get(`worker-${ticket.id}`)!()).toBeUndefined()
+  expect(guards.get(`worker-${ticket.id}`)!.map(guard => guard())).toEqual([undefined, undefined])
   const retried = await runtime.engine.retryTicket(ticket.id)
   await runtime.idle()
   expect(waitsForPerson(runtime.store.tickets.get(ticket.id)!)).toBe(false)
@@ -1496,7 +1496,7 @@ it('fails a ticket at once on a worker error that is not passing, and relays it'
 
 it('refuses the main Session a bash command that runs sleep and a long job wait, as reports arrive by themselves, and no worker', async () => {
   const bash = (command: string) => ({ name: 'bash', arguments: { command, description: 'x' } })
-  const main = guards.get(runtime.masterId)!
+  const main = guards.get(runtime.masterId)!.at(-1)!
   for (const command of ['sleep 60; echo done', 'cd x && sleep 5', 'gh pr checks 7 || sleep 30', 'echo a\nsleep 90', 'while true; do sleep 30; done',
     '(sleep 5)', '/bin/sleep 240', 'while sleep 30; do gh pr checks 7; done', 'if sleep 5; then gh pr view 7; fi', '{ sleep 60; }', '! sleep 5',
     'nohup sleep 60', 'exec sleep 60', 'time sleep 60', 'until sleep 1; do :; done', 'command sleep 5', 'env sleep 5'])
@@ -1527,7 +1527,7 @@ it('refuses the main Session a bash command that runs sleep and a long job wait,
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true, timeout_ms: 5_000 } })).toBeUndefined()
   // A worker waits for its own work as it needs.
   const { sessionId } = await acceptedTicket()
-  expect(guards.get(sessionId)!(bash('sleep 60'))).toBeUndefined()
+  expect(guards.get(sessionId)![0]!(bash('sleep 60'))).toBeUndefined()
   // The main Session's role says so.
   expect(masterPrompt).toContain('Worker reports, follow_up notices, new candidates and a background job\'s end, with its output, arrive by themselves as messages')
 })
@@ -1539,7 +1539,7 @@ it('reads the main Session\'s preset from a registry with or without presetForSe
     services.agentPresets = registry
     if (projections) services.sessionProjections = projections; else delete services.sessionProjections
     await (await restart()).ready
-    return guards.get(runtime.masterId)!
+    return guards.get(runtime.masterId)!.at(-1)!
   }
   // A released DSH's registry has no presetForSession: the projection says standard, so standard's caps apply, and the
   // other tools run.
@@ -1560,13 +1560,36 @@ it('reads the main Session\'s preset from a registry with or without presetForSe
 
 it('refuses an ended ticket\'s worker its tools, and restricts the main Session to the tools it may use', async () => {
   const { ticket, sessionId } = await acceptedTicket()
-  expect(guards.get(sessionId)!()).toBeUndefined()
+  expect(guards.get(sessionId)!.map(guard => guard())).toEqual([undefined, undefined])
   runtime.engine.stopTicket(ticket.id)
-  expect(guards.get(sessionId)!()).toBe('Ticket ended; new work needs a new authorized ticket')
+  expect(guards.get(sessionId)!.map(guard => guard())).toEqual(['Ticket ended; new work needs a new authorized ticket', undefined])
   expect(restricts.get(runtime.masterId)).toEqual([{ allow: ['skill', 'bash', 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }])
   // A worker keeps only the profile's work tools: none that ask a person, change the profile, schedule or start work outside
   // the worker slots, reach other Sessions or edit documents, whenever they were registered.
   expect(restricts.get(sessionId)).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
+})
+
+it('switches a worker Session to its expert\'s tier when it loads that expert\'s skill, and not for other calls', async () => {
+  const { sessionId } = await acceptedTicket()
+  const executor = runtime.store.settings().executor
+  await runtime.settings.save('executor', { ...executor,
+    models: { 'luban-engineering': { provider: 'tier-provider', model: 'flagship', reasoningEffort: 'max' } } },
+    runtime.store.blockRevision('executor'), 'panel')
+  const tier = guards.get(sessionId)!.at(-1)!
+  const session = (agents.get(sessionId)! as unknown as { session: { snapshotEvents: () => { type: string; data: unknown }[] } }).session
+  const events = session.snapshotEvents()
+  const selections = () => events.filter(event => event.type === 'model/selection')
+  expect(selections()).toHaveLength(0)
+  tier({ name: 'skill', arguments: { name: 'dsh-superagent-luban-engineering' } })
+  await vi.waitFor(() => expect(selections()).toHaveLength(1))
+  expect(selections()[0]!.data).toEqual({ provider: 'tier-provider', model: 'flagship', reasoningEffort: 'max' })
+  // Re-loading the tiered skill records nothing new; other skills, other tools and missing executions leave the model alone.
+  tier({ name: 'skill', arguments: { name: 'dsh-superagent-luban-engineering' } })
+  tier({ name: 'skill', arguments: { name: 'dsh-superagent-zhiliang-research' } })
+  tier({ name: 'bash', arguments: { command: 'echo x' } })
+  tier(undefined)
+  await new Promise(settle => setTimeout(settle, 20))
+  expect(selections()).toHaveLength(1)
 })
 
 it('gives an explicit ticket\'s worker a prompt without the limits of an inferred Mandate', async () => {
@@ -1721,9 +1744,9 @@ it('gives a subagent of a worker only the worker\'s work tools, and none once th
   child.session.header = { parentSession: sessionId }
   await (runtime as unknown as { ctx: Context }).ctx.parallel('agent/created', { agent: child } as never)
   expect(restricts.get('child-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
-  expect(guards.get('child-1')!()).toBeUndefined()
+  expect(guards.get('child-1')![0]!()).toBeUndefined()
   runtime.engine.stopTicket(ticket.id)
-  expect(guards.get('child-1')!()).toBe('Ticket ended; new work needs a new authorized ticket')
+  expect(guards.get('child-1')![0]!()).toBe('Ticket ended; new work needs a new authorized ticket')
   // Another Session's subagent is left as it is.
   await (controller.create as (options: { sessionId: string }) => Promise<void>)({ sessionId: 'child-2' })
   const other = agents.get('child-2')! as unknown as { session: { header: { parentSession?: string } } }
@@ -1744,7 +1767,7 @@ it('gives a subagent of a worker\'s subagent the same work tools and guard', asy
   }
   expect(restricts.get('grandchild-1')).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
   runtime.engine.stopTicket(ticket.id)
-  expect(guards.get('grandchild-1')!()).toBe('Ticket ended; new work needs a new authorized ticket')
+  expect(guards.get('grandchild-1')![0]!()).toBe('Ticket ended; new work needs a new authorized ticket')
 })
 
 it('gives the Assignment a restart starts the messages the replaced one had delivered but no step took, once', async () => {

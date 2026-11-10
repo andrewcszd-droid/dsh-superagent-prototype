@@ -99,3 +99,21 @@ it('records nothing for a pause that changes nothing, refuses a sync while setup
   vi.mocked(Setup.prototype.configured).mockRestore()
   expect(() => settings.block('source:x')).toThrow(new UserError('unknownBlock', { block: 'source:x' }))
 })
+it('saves per-expert model tiers on the executor block and refuses malformed ones', async () => {
+  h = await startRuntime()
+  const { settings, store } = h.runtime
+  const executor = store.settings().executor
+  const tiers = { 'luban-engineering': { provider: 'worker-provider', model: 'flagship' },
+    'zhiliang-research': { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'low' } }
+  await settings.save('executor', { ...executor, models: tiers }, store.blockRevision('executor'), 'tool')
+  expect(store.settings().executor.models).toEqual(tiers)
+  const bad = { 'luban-engineering': { provider: 'worker-provider', model: 'flagship' } }
+  await expect(settings.save('executor', { ...executor, models: { 'Bad Key': bad['luban-engineering']! } },
+    store.blockRevision('executor'), 'panel')).rejects.toThrow()
+  await expect(settings.save('executor', { ...executor, models: { 'luban-engineering': { provider: '', model: 'flagship' } } },
+    store.blockRevision('executor'), 'panel')).rejects.toThrow()
+  // A value without the key takes the default, so a save can clear tiers.
+  const { models: _dropped, ...without } = store.settings().executor
+  await settings.save('executor', without, store.blockRevision('executor'), 'tool')
+  expect(store.settings().executor.models).toEqual({})
+})
