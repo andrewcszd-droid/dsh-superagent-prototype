@@ -429,6 +429,7 @@ const TEXT = {
   workersMounted: ['挂载', 'mounted'],
   workersUpdated: ['最近修订', 'last changed'],
   workersUncategorized: ['未分类', 'Uncategorized'],
+  workersAll: ['全部', 'All'],
   workersEmptyTitle: ['尚未挂载任何专家 worker', 'No expert workers mounted'],
   workersEmptyBody: ['Prompts 配置中没有 skills（config.skills 为空）。挂载由蛋博士按 Prompts API 流程执行；若预期应有专家，请检查实例版本与配置。', 'The Prompts config has no skills. Mounting follows the Prompts API flow; if experts are expected, check the instance version and config.'],
   workersEmptySettings: ['去 Prompts 设置', 'Open Prompts settings'],

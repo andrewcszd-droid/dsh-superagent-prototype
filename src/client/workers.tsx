@@ -1,7 +1,7 @@
 /** Workers tab: the mounted expert roster grouped by category, with a per-expert detail view. Read-only over GET prompts/GET tickets. */
 import { useRef, useState } from 'react'
 import { usePoll, type PromptsView, type TicketRow } from './api.ts'
-import { Button, Icon, StateDot, Tag } from './controls.tsx'
+import { Button, Icon, Pill, StateDot, Tag } from './controls.tsx'
 import { attributed, BLOCK_LABEL_KEYS, buildRoster, parseHeading, parseTools, routingParagraph, skillHistory, splitSections,
   type ExpertCard, type RosterGroup, type RevisionRow, type SectionBlock } from './roster.ts'
 import { usePanel } from './provider.tsx'
@@ -67,13 +67,15 @@ function GroupView({ group }: { group: RosterGroup }) {
   </details>
 }
 
-/** The tab body: category groups of cards, an explicit empty state, or the degraded banner. */
+/** The tab body: a category filter, category groups of cards, an explicit empty state, or the degraded banner. */
 export function WorkersPage() {
   const { t, navigate } = usePanel()
+  const [filter, setFilter] = useState<string>()
   const { prompts, tickets, lastGood } = useExperts()
   const skills = prompts.data?.current.config.skills
   const groups: RosterGroup[] | undefined = skills
     ? buildRoster(skills, prompts.data?.revisions, tickets.data ?? []) : undefined
+  const shown = filter === undefined ? groups : groups?.filter(group => group.category === filter)
   const total = skills ? Object.keys(skills).length : 0
   return <>
     <StatusHead hint={t('workersIntro')} />
@@ -87,10 +89,18 @@ export function WorkersPage() {
       <Button variant="outline" size="sm" icon={<Icon name="settings" size={14} />}
         onClick={() => navigate(settingsRoute('prompts'))}>{t('workersEmptySettings')}</Button>
     </div>}
-    {groups !== undefined && total > 0 && <Section title={t('workersTeam')} count={total}>
-      {tickets.error && <Hint>{t('queuePartial')}</Hint>}
-      <div className="dt-workers-grid">{groups.map(group => <GroupView key={group.category ?? '__uncategorized'} group={group} />)}</div>
-    </Section>}
+    {groups !== undefined && total > 0 && <>
+      <div className="dt-filters">
+        <Pill active={filter === undefined} onClick={() => setFilter(undefined)}>{t('workersAll')} {total}</Pill>
+        {groups.map(group => <Pill key={group.category ?? '__uncategorized'} active={filter === group.category}
+          onClick={() => setFilter(group.category)}>
+          {group.category ?? t('workersUncategorized')} {group.experts.length}</Pill>)}
+      </div>
+      <Section title={t('workersTeam')} count={total}>
+        {tickets.error && <Hint>{t('queuePartial')}</Hint>}
+        <div className="dt-workers-grid">{shown?.map(group => <GroupView key={group.category ?? '__uncategorized'} group={group} />)}</div>
+      </Section>
+    </>}
   </>
 }
 

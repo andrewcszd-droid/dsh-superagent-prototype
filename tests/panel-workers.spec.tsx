@@ -113,6 +113,21 @@ it('attributes open tickets only by the exact full-name marker in the title', as
   expect(card('知了').textContent).toContain(zh.workersBadgeIdle)
 })
 
+it('filters the roster by its category pills and resets with All', async () => {
+  mountSkills()
+  await mount()
+  await open()
+  expect(all('.dt-filters .dt-pill')).toHaveLength(4)
+  await click(`${zh.workersAll} 3`)
+  expect(all('.dt-worker-card')).toHaveLength(3)
+  await click('产品需求 1')
+  expect(all('.dt-worker-card')).toHaveLength(1)
+  expect(card('北极星')).toBeTruthy()
+  expect(all('.dt-worker-group')).toHaveLength(1)
+  await click(`${zh.workersAll} 3`)
+  expect(all('.dt-worker-card')).toHaveLength(3)
+})
+
 it('opens the detail with the definition columns, the verbatim routing rule, this skill\'s history, and its attributed tickets', async () => {
   mountSkills()
   server.tickets.open = [ticketSummary({ id: 't9', title: '看板需求重设计（北极星）：新增「专家 worker」页签' })]
